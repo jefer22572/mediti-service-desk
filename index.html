@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="description" content="Sistema de Service Desk basado en ITIL 4 para MediTI y el Grupo Hospitalario VidaSalud">
+<title>MediTI Service Desk</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230E6B66'/%3E%3Ctext x='16' y='23' font-size='19' font-family='Arial' font-weight='700' fill='white' text-anchor='middle'%3EM%3C/text%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Semi+Condensed:wght@500;600;700&family=Source+Sans+3:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap">
+<link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+<section id="login" class="login wrap">
+  <form class="box" id="fLogin" novalidate autocomplete="off">
+    <div class="logo"><div class="mark" aria-hidden="true">M</div><div><h1>MediTI Service Desk</h1><span class="note">Grupo Hospitalario VidaSalud</span></div></div>
+    <p class="sub" style="margin:0">Inicie sesión para gestionar los incidentes.</p>
+    <label class="f">Usuario<input id="lUser" autocomplete="username" required autofocus></label>
+    <label class="f">Contraseña<span class="pwd"><input id="lPass" type="password" autocomplete="current-password" required><button type="button" id="lShow">Mostrar</button></span></label>
+    <p class="err" id="lErr" role="alert"></p>
+    <button class="btn pri" type="submit" id="lBtn" style="padding:10px">Ingresar</button>
+    <p class="foot">Acceso restringido al personal del Service Desk. La sesión se cierra tras 30 minutos sin actividad y el acceso se bloquea 60 segundos después de 5 intentos fallidos.</p>
+  </form>
+</section>
+
+<div id="app" hidden>
+<header class="top">
+  <div class="wrap">
+    <div class="brand"><b>MediTI Service Desk</b><span>Grupo Hospitalario VidaSalud · Nivel 1 – 24/7</span></div>
+    <span id="shift" class="shift on">Horario de oficina</span>
+    <span id="clock" class="clock">--</span>
+    <span id="mode" class="mode"></span>
+    <span class="userchip"><span class="av" id="uAv">A</span><span id="uName">admin</span><button class="btn" id="btnLogout" style="padding:4px 10px">Cerrar sesión</button></span>
+  </div>
+  <div class="wrap"><nav class="tabs" role="tablist">
+    <button role="tab" data-v="dashboard" aria-selected="true">Dashboard</button>
+    <button role="tab" data-v="tickets" aria-selected="false">Tickets</button>
+    <button role="tab" data-v="nuevo" aria-selected="false">Registrar incidente</button>
+    <button role="tab" data-v="matriz" aria-selected="false">Matriz y escalamiento</button>
+  </nav></div>
+</header>
+
+<main class="wrap">
+  <div id="banner"></div>
+
+  <section id="v-dashboard">
+    <div class="row" style="justify-content:space-between;margin-bottom:12px">
+      <div><h2>Indicadores del servicio</h2><p class="sub" style="margin:0">Calculados en vivo a partir de los tickets registrados.</p></div>
+      <div class="row">
+        <label class="f" style="flex-direction:row;align-items:center;gap:8px">Periodo
+          <select id="periodo" style="width:auto"><option value="7">Últimos 7 días</option><option value="14" selected>Últimos 14 días</option><option value="30">Últimos 30 días</option></select></label>
+        <button class="btn" id="btnZabbix">Simular alerta de monitoreo</button>
+      </div>
+    </div>
+    <div class="kpis" id="kpis"></div>
+    <div class="grid2">
+      <div class="card chart"><h3>Tickets registrados por día y prioridad</h3><div id="chDia"></div>
+        <div class="legend"><span><i style="background:var(--p1)"></i>P1</span><span><i style="background:var(--p2)"></i>P2</span><span><i style="background:var(--p3)"></i>P3</span><span><i style="background:var(--p4)"></i>P4</span></div></div>
+      <div class="card risk"><h3>Tickets abiertos con SLA en riesgo</h3><ul id="riesgo"></ul></div>
+    </div>
+    <div class="grid2">
+      <div class="card chart"><h3>MTTR por prioridad frente a la meta (horas)</h3><div id="chMttr"></div>
+        <div class="legend"><span><i style="background:var(--accent)"></i>MTTR real</span><span><i style="background:var(--fg);height:2px;vertical-align:3px"></i>Meta SLA</span></div></div>
+      <div class="card chart"><h3>Nivel que resolvió el ticket</h3><div id="chNivel"></div>
+        <h3 style="margin-top:16px">Tickets por categoría</h3><div id="chCat"></div></div>
+    </div>
+  </section>
+
+  <section id="v-tickets" hidden>
+    <h2>Cola de tickets</h2><p class="sub">Haga clic en un ticket para ver su historial, escalarlo, resolverlo o cerrarlo.</p>
+    <div class="filters">
+      <input id="fq" placeholder="Buscar por N.°, título, sede o CI" aria-label="Buscar">
+      <select id="fe" aria-label="Estado"><option value="abiertos">Abiertos</option><option value="">Todos los estados</option><option>Nuevo</option><option>En curso</option><option>En espera</option><option>Escalado</option><option>Resuelto</option><option>Cerrado</option></select>
+      <select id="fp" aria-label="Prioridad"><option value="">Todas las prioridades</option><option>P1</option><option>P2</option><option>P3</option><option>P4</option></select>
+      <select id="fn" aria-label="Nivel"><option value="">Todos los niveles</option><option>N1</option><option>N2</option><option>N3</option></select>
+      <select id="fs" aria-label="Sede"><option value="">Todas las sedes</option></select>
+    </div>
+    <div class="tbl"><table><thead><tr><th>N.° ticket</th><th>Prioridad</th><th>Título</th><th>Sede</th><th>Nivel</th><th>Estado</th><th>SLA resolución</th><th>Registrado</th></tr></thead><tbody id="tbody"></tbody></table></div>
+  </section>
+
+  <section id="v-nuevo" hidden>
+    <h2>Registrar incidente</h2><p class="sub">La prioridad se calcula con la matriz impacto × urgencia. Todo incidente que detenga la atención de pacientes es P1.</p>
+    <form id="fNuevo" class="card form" novalidate>
+      <label class="f">Solicitante<input id="nSol" required placeholder="Ej.: Médico de guardia"></label>
+      <label class="f">Sede<select id="nSede"></select></label>
+      <label class="f">Área<select id="nArea"></select></label>
+      <label class="f">Canal<select id="nCanal"></select></label>
+      <label class="f">Categoría<select id="nCat"></select></label>
+      <label class="f">CI afectado<input id="nCi" placeholder="Ej.: SRV-ORA-PRD01"></label>
+      <label class="f span3">Título<input id="nTit" required placeholder="Resumen breve del problema"></label>
+      <label class="f span3">Descripción<textarea id="nDesc" rows="3" placeholder="Síntomas, mensaje de error, desde cuándo ocurre"></textarea></label>
+      <label class="f">Impacto<select id="nImp"><option value="1">Alto – sede completa o servicio crítico</option><option value="2" selected>Medio – un área o grupo</option><option value="3">Bajo – un usuario</option></select></label>
+      <label class="f">Urgencia<select id="nUrg"><option value="1">Alta – atención detenida</option><option value="2" selected>Media – proceso degradado</option><option value="3">Baja – puede esperar</option></select></label>
+      <div class="chk span3"><input type="checkbox" id="nCli"><label for="nCli">Afecta la atención de pacientes en Emergencia, UCI, Sala de Operaciones o Farmacia (regla clínica → P1)</label></div>
+      <div class="prioBox span3" id="prioBox"></div>
+      <div class="row span3"><button class="btn pri" type="submit">Registrar ticket</button><span class="note" id="nMsg"></span></div>
+    </form>
+  </section>
+
+  <section id="v-matriz" hidden class="ref">
+    <h2>Matriz de prioridad, SLA y escalamiento</h2><p class="sub">Reglas que aplica el sistema al registrar y escalar cada ticket.</p>
+    <div class="grid2">
+      <div class="card"><h3>Matriz impacto × urgencia</h3><div class="tbl"><table><thead><tr><th>Impacto \ Urgencia</th><th>Alta</th><th>Media</th><th>Baja</th></tr></thead><tbody>
+        <tr><td><b>Alto</b></td><td><span class="pill P1">P1</span></td><td><span class="pill P2">P2</span></td><td><span class="pill P3">P3</span></td></tr>
+        <tr><td><b>Medio</b></td><td><span class="pill P2">P2</span></td><td><span class="pill P3">P3</span></td><td><span class="pill P4">P4</span></td></tr>
+        <tr><td><b>Bajo</b></td><td><span class="pill P3">P3</span></td><td><span class="pill P4">P4</span></td><td><span class="pill P4">P4</span></td></tr></tbody></table></div></div>
+      <div class="card"><h3>Acuerdos de nivel de servicio</h3><div class="tbl"><table><thead><tr><th>Prioridad</th><th>Respuesta</th><th>Resolución</th><th>Escalar N1→N2</th></tr></thead><tbody>
+        <tr><td><span class="pill P1">P1 Crítica</span></td><td class="mono">15 min</td><td class="mono">4 h</td><td>Inmediato</td></tr>
+        <tr><td><span class="pill P2">P2 Alta</span></td><td class="mono">30 min</td><td class="mono">8 h</td><td>15 min</td></tr>
+        <tr><td><span class="pill P3">P3 Media</span></td><td class="mono">2 h</td><td class="mono">24 h</td><td>30 min</td></tr>
+        <tr><td><span class="pill P4">P4 Baja</span></td><td class="mono">4 h</td><td class="mono">72 h</td><td>1 h</td></tr></tbody></table></div></div>
+    </div>
+    <div class="esc">
+      <div class="card lv"><h3>Nivel 1 · Service Desk MediTI</h3><p class="note">24/7 · recepción, registro, categorización y priorización</p><ul><li>Resolución con base de conocimiento</li><li>Escala por tiempo o especialidad</li><li>Gestor de Incidentes Mayores para P1</li><li>Cierre y encuesta de satisfacción</li></ul></div>
+      <div class="card lv"><h3>Nivel 2 · TI Grupo VidaSalud</h3><p class="note">L-V 08:00–18:00 · fuera de horario: guardia on-call para P1/P2</p><ul id="lstN2"></ul></div>
+      <div class="card lv"><h3>Nivel 3 · Proveedores</h3><p class="note">Contratos de soporte 24/7 para P1/P2</p><ul id="lstN3"></ul></div>
+    </div>
+  </section>
+</main>
+</div>
+
+<div id="drawer" class="drawer" hidden><div class="pane" id="pane" role="dialog" aria-modal="true" aria-label="Detalle del ticket"></div></div>
+<div id="toast" class="toast" hidden></div>
+
+<script src="js/catalogos.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
