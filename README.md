@@ -17,6 +17,7 @@ MediTI atiende el Nivel 1 del soporte TI 24/7 para hospitales y clínicas en Lim
 | **Detalle del ticket** | Ciclo de vida completo: asignar, en curso, en espera, escalar a **N2** (TI VidaSalud) o **N3** (proveedores), declarar **incidente mayor**, resolver, cerrar con encuesta o reabrir. Historial con fecha, hora, nivel y usuario. |
 | **Soporte 24/7** | Detecta el horario: fuera de oficina el Nivel 2 se atiende por **guardia on-call**. Avisa cuando un ticket supera el tiempo máximo en Nivel 1. |
 | **Monitoreo** | Botón que simula una alerta de **Zabbix** y crea el ticket automáticamente. |
+| **Auditoría (no repudio)** | Cada acción se firma digitalmente (ECDSA P-256) con la clave del usuario y se encadena con un hash SHA-256. La bitácora muestra quién hizo qué y cuándo, verifica la integridad, detecta cualquier alteración y se exporta firmada en JSON. |
 | **Matriz y escalamiento** | Referencia de la matriz de prioridad, SLA y los tres niveles de soporte. |
 
 ## Acceso
@@ -24,8 +25,31 @@ MediTI atiende el Nivel 1 del soporte TI 24/7 para hospitales y clínicas en Lim
 | Usuario | Contraseña | Rol |
 |---|---|---|
 | `admin` | `admin` | Administrador del Service Desk |
+| `analista` | `analista` | Analista N1 – MediTI |
+| `supervisor` | `supervisor` | Coordinador del Service Desk |
+
+Cada usuario tiene su propia cuenta y su propia clave de firma, para que cada acción quede atribuida a una persona.
 
 > Credenciales de demostración para fines académicos. En un entorno real se reemplazarían por autenticación del lado del servidor (Active Directory / Entra ID con MFA).
+
+## No repudio
+
+El sistema garantiza que ningún usuario pueda negar una acción que realizó sobre un ticket:
+
+| Mecanismo | Cómo se aplica |
+|---|---|
+| **Identificación individual** | Cada persona entra con su propia cuenta; las acciones registran usuario y rol. |
+| **Firma digital** | Al iniciar sesión por primera vez se genera un par de claves **ECDSA P-256** (Web Crypto API). La clave privada se guarda cifrada con la contraseña del usuario (**PBKDF2 + AES-GCM 256**) y solo se abre en memoria durante la sesión. |
+| **Sello de tiempo y hash** | Cada evento guarda fecha y hora, y un **hash SHA-256** de su contenido. |
+| **Cadena de integridad** | Cada hash incluye el hash del evento anterior del mismo ticket, como en un blockchain: si se borra o modifica un registro, la cadena se rompe. |
+| **Huella del estado** | La última acción firmada guarda la huella del estado del ticket; si alguien cambia la prioridad o el estado fuera del sistema, se detecta. |
+| **Confirmación expresa** | Las acciones críticas (escalar, incidente mayor, resolver, cerrar, reabrir) muestran un aviso de «Firmar y confirmar». |
+| **Bitácora solo de anexión** | No existe opción para editar ni borrar eventos. |
+| **Verificación independiente** | Con el registro de claves públicas cualquiera puede comprobar las firmas. La bitácora se exporta en JSON con hashes y firmas como evidencia. |
+
+En la pestaña **Auditoría (no repudio)**, el botón **Simular alteración de un registro** modifica un evento sin firmarlo para demostrar que la verificación lo detecta (✗ Alterado).
+
+> **Alcance académico:** en producción el no repudio se reforzaría con certificados digitales emitidos por una entidad acreditada (Ley N.° 27269 de Firmas y Certificados Digitales del Perú), sellado de tiempo de una TSA y almacenamiento de la bitácora en un servidor de solo escritura.
 
 ## Acuerdos de nivel de servicio (SLA)
 
@@ -87,12 +111,14 @@ mediti-service-desk/
 | ![Login](docs/img/01-login.png) | ![Tickets](docs/img/03-tickets.png) |
 | **Detalle y escalamiento** | **Registro con prioridad automática** |
 | ![Detalle](docs/img/04-detalle.png) | ![Registro](docs/img/05-registro.png) |
+| **Acciones firmadas** | **Bitácora de auditoría** |
+| ![Firma](docs/img/07-firma-ticket.png) | ![Auditoría](docs/img/08-auditoria.png) |
 
 ## Tecnologías y marco de referencia
 
 - HTML5, CSS3 y JavaScript (sin frameworks ni dependencias).
 - Gráficos SVG generados por código.
-- Web Crypto API (SHA-256) para la validación de credenciales.
+- Web Crypto API: SHA-256 (credenciales y cadena de hashes), ECDSA P-256 (firma digital), PBKDF2 + AES-GCM (protección de la clave privada).
 - Prácticas ITIL 4: Service Desk, Gestión de Incidentes, Gestión de Niveles de Servicio, Gestión de Proveedores, Monitoreo y Gestión de Eventos.
 
 ## Autor

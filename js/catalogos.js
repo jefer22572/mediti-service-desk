@@ -183,5 +183,11 @@ function genDemo(now) {
     L((t.cerrado - created) / MIN, 'N1', 'Service Desk MediTI', 'Usuario confirmó la solución. Encuesta: ' + t.csat + '/5. Ticket cerrado.');
     out.push(t);
   }
+  // Ningún evento de demostración queda en el futuro
+  for (const t of out) {
+    const maxT = Math.max(...t.log.map(e => e.t), t.cerrado || 0, t.resuelto || 0);
+    const shift = maxT - (now - 5 * MIN);
+    if (shift > 0) { ['creado', 'asignado', 'resuelto', 'cerrado'].forEach(k => { if (t[k]) t[k] -= shift; }); t.log.forEach(e => e.t -= shift); }
+  }
   return out;
 }

@@ -106,6 +106,12 @@ td.mono,.mono{font-family:var(--f-mono);font-size:12.5px;font-variant-numeric:ta
 .esc ul{margin:6px 0 0;padding-left:18px;font-size:14px}
 .note{font-size:13px;color:var(--muted)}
 .banner{background:var(--warns);color:var(--warn);padding:8px 12px;border-radius:6px;font-size:13px;margin-bottom:12px}
+/* No repudio */
+.sig{display:inline-block;font:600 11px var(--f-mono);padding:1px 6px;border-radius:3px;margin-left:6px;white-space:nowrap}
+.sig.ok{background:var(--oks);color:var(--ok)} .sig.bad{background:var(--bads);color:var(--bad)} .sig.none{background:var(--sunk);color:var(--muted)}
+.hashline{font:11px var(--f-mono);color:var(--muted);word-break:break-all}
+.sumrow{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-bottom:12px}
+@media (max-width:900px){.sumrow{grid-template-columns:repeat(2,minmax(0,1fr))}}
 /* Login */
 .login{min-height:100vh;display:grid;place-items:center;padding-block:32px}
 .login .box{width:min(400px,100%);background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:28px 24px;display:flex;flex-direction:column;gap:14px}

@@ -141,7 +141,7 @@ function renderEmpty() {
   const bd = $('#btnDemo'); if (bd) bd.onclick = cargarDemo;
 }
 
-function render() { renderEmpty(); renderDash(); renderTabla(); if (OPEN) renderDetalle(OPEN); }
+function render() { renderEmpty(); renderDash(); renderTabla(); if (OPEN) renderDetalle(OPEN); verificarTodo(); }
 
 // ===== Detalle y acciones =====
 let OPEN = null;
@@ -177,8 +177,9 @@ function renderDetalle(id) {
     </dl>
     ${necesitaEscalar(t) ? `<div class="banner">Este ${t.prioridad} supera el tiempo máximo en Nivel 1. Escálelo a Nivel 2${fueraDeHorario() ? ' (guardia on-call)' : ''}.</div>` : ''}
     ${act ? `<div class="actions">${act}</div>` : ''}
+    ${VER[t.id] && VER[t.id].estado === 'modificado' ? '<div class="banner" style="background:var(--bads);color:var(--bad)">Los datos de este ticket fueron modificados fuera del sistema: no coinciden con la última acción firmada.</div>' : ''}
     <h3>Historial del ticket</h3>
-    <ul class="timeline">${t.log.slice().sort((a, b) => b.t - a.t).map(l => `<li><div class="when">${fmtDT(l.t)}</div><span class="lvl">${l.nivel}</span><span class="who">${esc(l.autor)}</span><div>${esc(l.texto)}</div></li>`).join('')}</ul>`;
+    <ul class="timeline">${t.log.map((l, i) => ({ l, i })).sort((a, b) => b.l.t - a.l.t).map(({ l, i }) => `<li><div class="when">${fmtDT(l.t)}</div><span class="lvl">${l.nivel}</span><span class="who">${esc(l.autor)}${l.usuario ? ' · ' + esc(l.usuario) : ''}</span>${sigBadge(VER[t.id] ? VER[t.id].entries[i] : (l.hash ? 'pend' : 'sin_firma'))}<div>${esc(l.texto)}</div>${l.hash ? `<div class="hashline">SHA-256 ${l.hash.slice(0, 24)}… · clave ${esc(l.kid)}</div>` : ''}</li>`).join('')}</ul>`;
   $('#btnX').onclick = cerrarPanel;
   $('#pane').querySelectorAll('[data-a]').forEach(b => b.onclick = () => accion(t.id, b.dataset.a));
 }
@@ -191,7 +192,8 @@ function solOpts(t) {
 async function accion(id, a) {
   const t0 = TICKETS.find(x => x.id === id); if (!t0) return;
   const t = JSON.parse(JSON.stringify(t0)); const now = ahora();
-  const log = (nivel, autor, texto) => t.log.push({ t: now, nivel, autor: autor + (SESSION ? ' · ' + SESSION.user : ''), texto });
+  if (FIRMAR_ACC.includes(a) && !(await confirmarFirma(t, ETIQ_ACC[a]))) return;
+  const log = (nivel, autor, texto) => t.log.push({ t: now, nivel, autor, usuario: SESSION ? SESSION.user : '', rol: SESSION ? SESSION.rol : '', accion: a, texto, pend: true });
   if (a === 'tomar') { t.estado = 'En curso'; t.asignado = now; log('N1', 'Analista N1', 'Ticket asignado y en diagnóstico.'); }
   if (a === 'curso') { t.estado = 'En curso'; log(t.nivel, 'Analista', 'Ticket en curso.'); }
   if (a === 'espera') { t.estado = 'En espera'; log(t.nivel, 'Analista', 'En espera de información del usuario o del proveedor.'); }
@@ -202,6 +204,7 @@ async function accion(id, a) {
   if (a === 'cerrar') { t.csat = +$('#selCsat').value; t.estado = 'Cerrado'; t.cerrado = now; log('N1', 'Service Desk MediTI', 'Usuario confirmó la solución. Encuesta: ' + t.csat + '/5. Ticket cerrado.'); }
   if (a === 'reabrir') { t.estado = 'En curso'; t.resuelto = null; t.reabierto = (t.reabierto || 0) + 1; t.fcr = false; log(t.nivel, 'Service Desk MediTI', 'El usuario indica que la falla persiste. Ticket reabierto.'); }
   if (a === 'nota') { const s = $('#txtNota').value.trim(); if (!s) return; log(t.nivel, 'Analista', s); }
+  await sellar(t);
   if (await guardar(t)) toast({ tomar: 'Ticket asignado', curso: 'Ticket en curso', espera: 'Ticket en espera', mayor: 'Incidente mayor declarado', n2: 'Escalado a Nivel 2', n3: 'Escalado a Nivel 3', resolver: 'Ticket resuelto', cerrar: 'Ticket cerrado', reabrir: 'Ticket reabierto', nota: 'Nota agregada' }[a]);
 }
 
@@ -210,12 +213,17 @@ function siguienteId() { const n = Math.max(4800, ...TICKETS.map(t => t.n || 0))
 async function crear(d) {
   const { n, id } = siguienteId(); const now = ahora();
   const prio = prioridadDe(d.impacto, d.urgencia, d.clinico);
-  const t = { id, n, titulo: d.titulo, descripcion: d.descripcion, solicitante: d.solicitante, sede: d.sede, area: d.area, canal: d.canal, categoria: d.categoria, ci: d.ci, impacto: d.impacto, urgencia: d.urgencia, clinico: d.clinico, prioridad: prio, nivel: 'N1', grupo: '', proveedor: '', estado: 'Nuevo', creado: now, asignado: null, resuelto: null, cerrado: null, csat: null, reabierto: 0, fcr: false, mayor: false, solucion: '', log: [{ t: now, nivel: 'N1', autor: d.canal === 'Monitoreo (Zabbix)' ? 'Zabbix' : 'Service Desk MediTI' + (SESSION ? ' · ' + SESSION.user : ''), texto: 'Ticket registrado vía ' + d.canal + '. Prioridad ' + prio + ' (impacto ' + d.impacto + ', urgencia ' + d.urgencia + (d.clinico ? ', regla clínica' : '') + ').' }] };
+  const t = { id, n, titulo: d.titulo, descripcion: d.descripcion, solicitante: d.solicitante, sede: d.sede, area: d.area, canal: d.canal, categoria: d.categoria, ci: d.ci, impacto: d.impacto, urgencia: d.urgencia, clinico: d.clinico, prioridad: prio, nivel: 'N1', grupo: '', proveedor: '', estado: 'Nuevo', creado: now, asignado: null, resuelto: null, cerrado: null, csat: null, reabierto: 0, fcr: false, mayor: false, solucion: '', log: [{ t: now, nivel: 'N1', autor: d.canal === 'Monitoreo (Zabbix)' ? 'Zabbix' : 'Service Desk MediTI', usuario: SESSION ? SESSION.user : '', rol: SESSION ? SESSION.rol : '', accion: d.canal === 'Monitoreo (Zabbix)' ? 'alerta_monitoreo' : 'registrar', pend: true, texto: 'Ticket registrado vía ' + d.canal + '. Prioridad ' + prio + ' (impacto ' + d.impacto + ', urgencia ' + d.urgencia + (d.clinico ? ', regla clínica' : '') + ').' }] };
+  await sellar(t);
   if (await guardar(t)) return t; return null;
 }
 
 async function cargarDemo() {
   const demo = genDemo(ahora()); const b = $('#btnDemo'); if (b) { b.disabled = true; b.textContent = 'Cargando…'; }
+  if (CRYPTO_OK) {
+    const sys = await claveSistema();
+    for (const t of demo) { t.log.forEach(e => Object.assign(e, { usuario: 'sistema-demo', rol: 'Generador de datos de demostración', accion: 'demo', pend: true })); await sellar(t, sys.key, sys.kid); }
+  }
   if (LOCAL || !COL) { TICKETS = demo; lsSave(); render(); toast('Datos de demostración cargados'); return; }
   for (const t of demo) { try { await COL.doc(t.id).set(t); } catch (e) { toast('No se pudieron cargar los datos de demostración.'); break; } }
   toast('Datos de demostración cargados');
@@ -242,6 +250,8 @@ function initUI() {
   document.querySelectorAll('nav.tabs button').forEach(b => b.onclick = () => ver(b.dataset.v));
   ['#fq', '#fe', '#fp', '#fn', '#fs'].forEach(s => $(s).addEventListener('input', renderTabla));
   $('#periodo').onchange = renderDash;
+  $('#btnVerif').onclick = async () => { await verificarTodo(); renderAuditoria(); toast('Verificación completada'); };
+  $('#btnExport').onclick = exportarBitacora; $('#btnAlterar').onclick = simularAlteracion;
   ['#nImp', '#nUrg', '#nCli'].forEach(s => $(s).addEventListener('change', prioPreview)); prioPreview();
   $('#tbody').onclick = e => { const tr = e.target.closest('tr[data-id]'); if (tr) abrir(tr.dataset.id); };
   $('#riesgo').onclick = e => { const li = e.target.closest('li[data-id]'); if (li) abrir(li.dataset.id); };
@@ -267,7 +277,166 @@ function initUI() {
     const off = fueraDeHorario(d); const s = $('#shift'); s.className = 'shift ' + (off ? 'off' : 'on'); s.textContent = off ? 'Fuera de horario · N2 en guardia on-call' : 'Horario de oficina · N2 presencial'; };
   tick(); setInterval(() => { tick(); render(); }, 30000);
 }
-function ver(v) { document.querySelectorAll('nav.tabs button').forEach(b => b.setAttribute('aria-selected', b.dataset.v === v)); ['dashboard', 'tickets', 'nuevo', 'matriz'].forEach(x => $('#v-' + x).hidden = x !== v); }
+function ver(v) { document.querySelectorAll('nav.tabs button').forEach(b => b.setAttribute('aria-selected', b.dataset.v === v)); ['dashboard', 'tickets', 'nuevo', 'matriz', 'auditoria'].forEach(x => $('#v-' + x).hidden = x !== v); if (v === 'auditoria') renderAuditoria(); }
+
+// ===== No repudio: firma digital ECDSA P-256 + cadena de hashes SHA-256 =====
+const KS_KEY = 'mediti-keystore', REG_KEY = 'mediti-claves';
+let REG = {};            // registro de claves públicas {usuario: {kid: {jwk, rol, huella, creado}}}
+let PRIV = null, KID = null, PEND_REG = [];
+let VER = {}, verRunning = false, verPend = false, ALTER = null;
+const KEYCACHE = {};
+const te = new TextEncoder();
+const b64 = buf => { const u = new Uint8Array(buf); let s = ''; for (let i = 0; i < u.length; i++) s += String.fromCharCode(u[i]); return btoa(s); };
+const unb64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
+const CRYPTO_OK = !!(window.crypto && crypto.subtle && window.isSecureContext !== false);
+const FIRMAR_ACC = ['mayor', 'n2', 'n3', 'resolver', 'cerrar', 'reabrir'];
+const ETIQ_ACC = { registrar: 'Registrar ticket', alerta_monitoreo: 'Alerta de monitoreo', tomar: 'Asignar ticket', curso: 'Marcar en curso', espera: 'Poner en espera', mayor: 'Declarar incidente mayor', n2: 'Escalar a Nivel 2', n3: 'Escalar a Nivel 3', resolver: 'Resolver ticket', cerrar: 'Cerrar ticket', reabrir: 'Reabrir ticket', nota: 'Agregar nota', demo: 'Dato de demostración' };
+
+async function derivarClave(pw, salt) {
+  const base = await crypto.subtle.importKey('raw', te.encode(pw), 'PBKDF2', false, ['deriveKey']);
+  return crypto.subtle.deriveKey({ name: 'PBKDF2', salt, iterations: 150000, hash: 'SHA-256' }, base, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
+}
+async function huellaDe(jwk) { return (await sha256(jwk.x + '.' + jwk.y)).slice(0, 20).toUpperCase().match(/.{4}/g).join(':'); }
+
+async function prepararFirma(user, rol, pw) {
+  PRIV = null; KID = null;
+  if (!CRYPTO_OK) return;
+  try {
+    const ks = lsGet(KS_KEY) || {}; let e = ks[user];
+    if (e) {
+      const k = await derivarClave(pw, unb64(e.salt));
+      const raw = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: unb64(e.iv) }, k, unb64(e.enc));
+      PRIV = await crypto.subtle.importKey('pkcs8', raw, { name: 'ECDSA', namedCurve: 'P-256' }, false, ['sign']);
+    } else {
+      const kp = await crypto.subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, true, ['sign', 'verify']);
+      const pkcs8 = await crypto.subtle.exportKey('pkcs8', kp.privateKey);
+      const j = await crypto.subtle.exportKey('jwk', kp.publicKey); const pub = { kty: j.kty, crv: j.crv, x: j.x, y: j.y };
+      const salt = crypto.getRandomValues(new Uint8Array(16)), iv = crypto.getRandomValues(new Uint8Array(12));
+      const enc = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, await derivarClave(pw, salt), pkcs8);
+      const h = await huellaDe(pub);
+      e = { kid: 'K-' + h.replace(/:/g, '').slice(0, 12), salt: b64(salt), iv: b64(iv), enc: b64(enc), pub, huella: h, creado: Date.now() };
+      ks[user] = e; lsSet(KS_KEY, ks);
+      PRIV = await crypto.subtle.importKey('pkcs8', pkcs8, { name: 'ECDSA', namedCurve: 'P-256' }, false, ['sign']);
+    }
+    KID = e.kid;
+    PEND_REG.push({ user, kid: e.kid, data: { jwk: e.pub, rol, huella: e.huella || await huellaDe(e.pub), creado: e.creado } });
+  } catch (err) { PRIV = null; KID = null; }
+}
+async function claveSistema() {
+  const kp = await crypto.subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, true, ['sign', 'verify']);
+  const j = await crypto.subtle.exportKey('jwk', kp.publicKey); const pub = { kty: j.kty, crv: j.crv, x: j.x, y: j.y };
+  const h = await huellaDe(pub); const kid = 'K-' + h.replace(/:/g, '').slice(0, 12);
+  PEND_REG.push({ user: 'sistema-demo', kid, data: { jwk: pub, rol: 'Generador de datos de demostración', huella: h, creado: Date.now() } });
+  await publicarClave();
+  return { key: kp.privateKey, kid };
+}
+async function publicarClave() {
+  while (PEND_REG.length) {
+    const r = PEND_REG.shift();
+    REG = { ...REG, [r.user]: { ...(REG[r.user] || {}), [r.kid]: r.data } };
+    if (LOCAL || !DB) { lsSet(REG_KEY, REG); continue; }
+    const ref = DB.collection('claves').doc(r.user);
+    try { await ref.update({ keys: { [r.kid]: r.data } }); }
+    catch (e) { try { await ref.set({ keys: REG[r.user] }); } catch (e2) { } }
+  }
+}
+
+// Texto canónico que se firma: el orden de los campos es fijo.
+function canon(id, e) { return JSON.stringify([id, e.t, e.nivel, e.autor, e.usuario || '', e.rol || '', e.accion || '', e.texto, e.kid || '', e.prev || '', e.est || '']); }
+function estadoTicket(t) { return JSON.stringify([t.id, t.prioridad, t.estado, t.nivel, t.grupo || '', t.proveedor || '', t.solucion || '', t.csat ?? null, t.asignado ?? null, t.resuelto ?? null, t.cerrado ?? null, !!t.mayor, t.reabierto || 0]); }
+
+// Sella las entradas nuevas: encadena el hash con la anterior y firma con la clave privada del usuario.
+async function sellar(t, key = PRIV, kid = KID) {
+  if (!key || !CRYPTO_OK) { t.log.forEach(e => delete e.pend); return; }
+  const est = await sha256(estadoTicket(t));
+  for (let i = 0; i < t.log.length; i++) {
+    const e = t.log[i]; if (!e.pend) continue; delete e.pend;
+    e.kid = kid; e.prev = (i > 0 && t.log[i - 1].hash) || ('GENESIS:' + t.id); e.est = est;
+    e.hash = await sha256(canon(t.id, e));
+    e.firma = b64(await crypto.subtle.sign({ name: 'ECDSA', hash: 'SHA-256' }, key, te.encode(e.hash)));
+  }
+}
+async function clavePublica(u, kid) {
+  const r = REG[u] && REG[u][kid]; if (!r) return null;
+  const ck = u + '|' + kid + '|' + r.jwk.x;
+  if (!KEYCACHE[ck]) KEYCACHE[ck] = crypto.subtle.importKey('jwk', { ...r.jwk, ext: true }, { name: 'ECDSA', namedCurve: 'P-256' }, false, ['verify']);
+  return KEYCACHE[ck];
+}
+async function verificarTicket(t) {
+  const entries = [];
+  for (let i = 0; i < t.log.length; i++) {
+    const e = t.log[i];
+    if (!e.hash) { entries.push('sin_firma'); continue; }
+    if (await sha256(canon(t.id, e)) !== e.hash) { entries.push('alterado'); continue; }
+    if (e.prev !== ((i > 0 && t.log[i - 1].hash) || ('GENESIS:' + t.id))) { entries.push('cadena'); continue; }
+    let ok = false;
+    try { const k = await clavePublica(e.usuario, e.kid); if (k) ok = await crypto.subtle.verify({ name: 'ECDSA', hash: 'SHA-256' }, k, unb64(e.firma), te.encode(e.hash)); } catch (x) { }
+    entries.push(ok ? 'ok' : 'firma');
+  }
+  const last = t.log[t.log.length - 1];
+  const estado = last && last.hash && (await sha256(estadoTicket(t))) !== last.est ? 'modificado' : 'ok';
+  return { entries, estado };
+}
+async function verificarTodo() {
+  if (!CRYPTO_OK) return;
+  if (verRunning) { verPend = true; return; }
+  verRunning = true;
+  try { const out = {}; for (const t of TICKETS) out[t.id] = await verificarTicket(t); VER = out; } catch (e) { }
+  verRunning = false; renderVerif();
+  if (verPend) { verPend = false; verificarTodo(); }
+}
+function renderVerif() { if (OPEN) renderDetalle(OPEN); if (!$('#v-auditoria').hidden) renderAuditoria(); }
+
+function sigBadge(s) {
+  const M = { ok: ['ok', '✓ Firmado'], sin_firma: ['none', 'Sin firma'], pend: ['none', 'Verificando…'], alterado: ['bad', '✗ Alterado'], cadena: ['bad', '✗ Cadena rota'], firma: ['bad', '✗ Firma inválida'] };
+  const m = M[s] || M.pend; return `<span class="sig ${m[0]}">${m[1]}</span>`;
+}
+
+function confirmarFirma(t, accion) {
+  return new Promise(res => {
+    $('#firmaInfo').innerHTML = `<dt>Acción</dt><dd>${esc(accion)}</dd><dt>Ticket</dt><dd class="mono">${t.id}</dd><dt>Usuario</dt><dd>${esc(SESSION.user)} · ${esc(SESSION.rol)}</dd><dt>Fecha y hora</dt><dd class="mono">${new Date().toLocaleString('es-PE', { hour12: false })}</dd><dt>Clave de firma</dt><dd class="mono">${PRIV ? esc(KID) + ' (ECDSA P-256)' : 'No disponible'}</dd>`;
+    $('#firmaDlg').hidden = false; $('#firmaOk').focus();
+    const fin = v => { $('#firmaDlg').hidden = true; $('#firmaOk').onclick = $('#firmaNo').onclick = null; res(v); };
+    $('#firmaOk').onclick = () => fin(true); $('#firmaNo').onclick = () => fin(false);
+  });
+}
+
+function renderAuditoria() {
+  if (!CRYPTO_OK) { $('#audBanner').innerHTML = '<div class="banner">Este navegador no permite la firma digital (se requiere HTTPS). Abra el sistema desde su enlace https.</div>'; }
+  else $('#audBanner').innerHTML = PRIV ? '' : '<div class="banner">Su sesión no tiene clave de firma activa. Cierre sesión e ingrese nuevamente.</div>';
+  const ev = [];
+  TICKETS.forEach(t => t.log.forEach((e, i) => ev.push({ t, e, s: VER[t.id] ? VER[t.id].entries[i] : (e.hash ? 'pend' : 'sin_firma') })));
+  ev.sort((a, b) => b.e.t - a.e.t);
+  const c = { ok: 0, bad: 0, none: 0 };
+  ev.forEach(x => { if (x.s === 'ok') c.ok++; else if (['alterado', 'cadena', 'firma'].includes(x.s)) c.bad++; else c.none++; });
+  const modif = TICKETS.filter(t => VER[t.id] && VER[t.id].estado === 'modificado').length;
+  const tile = (l, v, m, st) => `<div class="kpi"><span class="st ${st}"></span><span class="lbl">${l}</span><span class="val">${v}</span><span class="meta">${m}</span></div>`;
+  $('#audSum').innerHTML = tile('Eventos registrados', ev.length, 'En ' + TICKETS.length + ' tickets', 'ok') + tile('Firmas válidas', c.ok, 'Hash y firma comprobados', c.ok ? 'ok' : 'warn') + tile('Registros alterados', c.bad + modif, (c.bad + modif) ? 'Requiere investigación' : 'Bitácora íntegra', (c.bad + modif) ? 'bad' : 'ok') + tile('Sin firma', c.none, 'Datos de ejemplo anteriores', c.none ? 'warn' : 'ok');
+  $('#audBody').innerHTML = ev.slice(0, 300).map(x => `<tr><td class="mono">${fmtDT(x.e.t)}</td><td class="mono">${x.t.id}${VER[x.t.id] && VER[x.t.id].estado === 'modificado' ? ' <span class="sig bad">ticket modificado</span>' : ''}</td><td>${esc(x.e.usuario || x.e.autor)}<br><span class="note">${esc(x.e.rol || '')}</span></td><td>${esc(ETIQ_ACC[x.e.accion] || x.e.accion || '—')}</td><td class="hashline">${x.e.hash ? x.e.hash.slice(0, 16) + '…' : '—'}</td><td>${sigBadge(x.s)}</td></tr>`).join('') || '<tr><td colspan="6" class="empty">Aún no hay eventos.</td></tr>';
+  const rows = []; Object.entries(REG).forEach(([u, ks]) => Object.entries(ks).forEach(([kid, r]) => rows.push(`<tr><td>${esc(u)}</td><td>${esc(r.rol || '')}</td><td class="mono">${esc(kid)}</td><td class="hashline">${esc(r.huella || '')}</td><td class="mono">${fmtDT(r.creado)}</td></tr>`)));
+  $('#audKeys').innerHTML = rows.join('') || '<tr><td colspan="5" class="empty">Aún no hay claves registradas.</td></tr>';
+  $('#btnExport').hidden = !LOCAL;
+  $('#btnAlterar').textContent = ALTER ? 'Deshacer la alteración simulada' : 'Simular alteración de un registro';
+}
+function exportarBitacora() {
+  const data = { sistema: 'MediTI Service Desk', generado: new Date().toISOString(), generadoPor: SESSION ? SESSION.user : '', algoritmo: 'ECDSA P-256 / SHA-256, hash encadenado por ticket', clavesPublicas: REG,
+    eventos: TICKETS.flatMap(t => t.log.map((e, i) => ({ ticket: t.id, fecha: new Date(e.t).toISOString(), usuario: e.usuario, rol: e.rol, accion: e.accion, texto: e.texto, kid: e.kid, prev: e.prev, hash: e.hash, firma: e.firma, verificacion: VER[t.id] ? VER[t.id].entries[i] : '' }))) };
+  const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }));
+  a.download = 'bitacora-firmada-mediti-' + new Date().toISOString().slice(0, 10) + '.json'; document.body.appendChild(a); a.click(); a.remove();
+  toast('Bitácora exportada');
+}
+async function simularAlteracion() {
+  if (ALTER) {
+    const t0 = TICKETS.find(x => x.id === ALTER.id); if (t0) { const t = JSON.parse(JSON.stringify(t0)); t.log[ALTER.idx].texto = ALTER.texto; await guardar(t); }
+    ALTER = null; toast('Registro restaurado: la verificación vuelve a ser válida'); renderAuditoria(); return;
+  }
+  let best = null; TICKETS.forEach(t => t.log.forEach((e, i) => { if (e.hash && (!best || e.t > best.e.t)) best = { t, e, i }; }));
+  if (!best) { toast('Primero registre o atienda un ticket para tener eventos firmados.'); return; }
+  const t = JSON.parse(JSON.stringify(best.t));
+  ALTER = { id: t.id, idx: best.i, texto: t.log[best.i].texto };
+  t.log[best.i].texto += ' [texto modificado sin autorización]';
+  await guardar(t); toast('Se modificó un registro de ' + t.id + ' sin firmarlo. Revise la verificación.'); renderAuditoria();
+}
 
 // ===== Inicio de la aplicación (solo después del login) =====
 let STARTED = false;
@@ -278,15 +447,21 @@ function start() {
   (async () => {
     try { DB = window.claude && window.claude.use ? await window.claude.use('db') : null; } catch (e) { DB = null; }
     READY = true;
-    if (!DB) { LOCAL = true; TICKETS = lsLoad(); $('#mode').textContent = 'Guardado local'; render(); return; }
+    if (!DB) { LOCAL = true; REG = lsGet(REG_KEY) || {}; TICKETS = lsLoad(); $('#mode').textContent = 'Guardado local'; await publicarClave(); render(); return; }
+    DB.collection('claves').onSnapshot(s => { const r = {}; s.docs.forEach(d => r[d.id] = (d.data().keys) || {}); REG = r; verificarTodo(); }, () => { });
     COL = DB.collection('tickets'); $('#mode').textContent = 'Datos compartidos en vivo';
     COL.onSnapshot(snap => { TICKETS = snap.docs.map(d => d.data()); render(); }, () => { toast('Se perdió la conexión con los datos.'); });
+    await publicarClave();
   })();
 }
 
 // ===== Autenticación =====
 // Las credenciales no se guardan en texto plano: se compara el hash SHA-256 de "MediTI-SD|usuario|contraseña".
-const USUARIOS = [{ user: 'admin', rol: 'Administrador del Service Desk', hash: '8cae2aa505b222e8ee85e52571bd8d477a64933a4e329cd2193d6833405d93a6' }];
+const USUARIOS = [
+  { user: 'admin', rol: 'Administrador del Service Desk', hash: '8cae2aa505b222e8ee85e52571bd8d477a64933a4e329cd2193d6833405d93a6' },
+  { user: 'analista', rol: 'Analista N1 – MediTI', hash: '379605a3fb6e2caea8f1a7928d5d2db3ade2e6388e82eec396fa8f558e98aafc' },
+  { user: 'supervisor', rol: 'Coordinador del Service Desk', hash: 'a801ab733bfeac29f63b17b0c084d8d036191e8f7383222e966d58b9863323ec' },
+];
 const SESSION_KEY = 'mediti-session', LOCK_KEY = 'mediti-lock';
 const INACTIVIDAD_MS = 30 * MIN, MAX_INTENTOS = 5, BLOQUEO_MS = 60000;
 let SESSION = null;
@@ -329,7 +504,7 @@ function mostrarApp() {
   start();
 }
 function cerrarSesion(motivo) {
-  SESSION = null; ssSet(SESSION_KEY, null); cerrarPanel();
+  SESSION = null; PRIV = null; KID = null; ssSet(SESSION_KEY, null); cerrarPanel();
   $('#app').hidden = true; $('#login').hidden = false;
   $('#lPass').value = ''; $('#lErr').textContent = motivo || ''; $('#lUser').focus();
 }
@@ -363,12 +538,15 @@ $('#fLogin').onsubmit = async e => {
   setLock({ intentos: 0, hasta: 0 });
   SESSION = { user: ok.user, rol: ok.rol, inicio: Date.now(), exp: Date.now() + INACTIVIDAD_MS };
   ssSet(SESSION_KEY, SESSION); $('#lErr').textContent = ''; $('#lPass').value = '';
-  mostrarApp(); toast('Bienvenido, ' + ok.user);
+  $('#lBtn').disabled = true; $('#lBtn').textContent = 'Abriendo clave de firma…';
+  await prepararFirma(ok.user, ok.rol, pw);
+  $('#lBtn').disabled = false; $('#lBtn').textContent = 'Ingresar';
+  mostrarApp(); if (READY) publicarClave(); toast('Bienvenido, ' + ok.user + (PRIV ? ' · firma digital activa' : ''));
 };
 $('#btnLogout').onclick = () => cerrarSesion('Sesión cerrada correctamente.');
 
 (() => {
   const s = ssGet(SESSION_KEY);
-  if (s && s.exp > Date.now() && USUARIOS.some(x => x.user === s.user)) { SESSION = s; mostrarApp(); }
-  else { ssSet(SESSION_KEY, null); pintarBloqueo(); }
+  // La clave privada solo vive en memoria: al recargar la página se vuelve a iniciar sesión.
+  ssSet(SESSION_KEY, null); pintarBloqueo();
 })();

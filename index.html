@@ -8,7 +8,7 @@
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230E6B66'/%3E%3Ctext x='16' y='23' font-size='19' font-family='Arial' font-weight='700' fill='white' text-anchor='middle'%3EM%3C/text%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Semi+Condensed:wght@500;600;700&family=Source+Sans+3:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap">
-<link rel="stylesheet" href="css/styles.css">
+<link rel="stylesheet" href="css/styles.css?v=4">
 </head>
 <body>
 <section id="login" class="login wrap">
@@ -37,6 +37,7 @@
     <button role="tab" data-v="tickets" aria-selected="false">Tickets</button>
     <button role="tab" data-v="nuevo" aria-selected="false">Registrar incidente</button>
     <button role="tab" data-v="matriz" aria-selected="false">Matriz y escalamiento</button>
+    <button role="tab" data-v="auditoria" aria-selected="false">Auditoría (no repudio)</button>
   </nav></div>
 </header>
 
@@ -99,6 +100,22 @@
     </form>
   </section>
 
+  <section id="v-auditoria" hidden class="ref">
+    <h2>Bitácora de auditoría</h2>
+    <p class="sub">Cada acción queda registrada con el usuario, la fecha y hora, un hash SHA-256 encadenado con la acción anterior y la firma digital ECDSA P-256 de quien la realizó. Si alguien modifica o borra un registro, la verificación lo detecta. Así nadie puede negar una acción que hizo (no repudio).</p>
+    <div id="audBanner"></div>
+    <div class="sumrow" id="audSum"></div>
+    <div class="row" style="margin-bottom:12px">
+      <button class="btn pri" id="btnVerif">Verificar integridad</button>
+      <button class="btn" id="btnExport">Exportar bitácora firmada (JSON)</button>
+      <button class="btn" id="btnAlterar">Simular alteración de un registro</button>
+    </div>
+    <div class="card" style="margin-bottom:12px"><h3>Eventos registrados</h3>
+      <div class="tbl"><table><thead><tr><th>Fecha y hora</th><th>Ticket</th><th>Usuario</th><th>Acción</th><th>Hash</th><th>Verificación</th></tr></thead><tbody id="audBody"></tbody></table></div></div>
+    <div class="card"><h3>Registro de claves públicas</h3><p class="note" style="margin-top:0">La clave privada de cada usuario se guarda cifrada con su contraseña (PBKDF2 + AES-GCM) y solo se abre en memoria al iniciar sesión. Con la clave pública cualquiera puede comprobar la firma.</p>
+      <div class="tbl"><table><thead><tr><th>Usuario</th><th>Rol</th><th>Id de clave</th><th>Huella</th><th>Creada</th></tr></thead><tbody id="audKeys"></tbody></table></div></div>
+  </section>
+
   <section id="v-matriz" hidden class="ref">
     <h2>Matriz de prioridad, SLA y escalamiento</h2><p class="sub">Reglas que aplica el sistema al registrar y escalar cada ticket.</p>
     <div class="grid2">
@@ -122,9 +139,14 @@
 </div>
 
 <div id="drawer" class="drawer" hidden><div class="pane" id="pane" role="dialog" aria-modal="true" aria-label="Detalle del ticket"></div></div>
+<div id="firmaDlg" class="drawer" hidden style="justify-content:center;align-items:center"><div class="card" role="dialog" aria-modal="true" aria-label="Firmar acción" style="width:min(480px,92vw)">
+  <h3>Firmar acción</h3><dl class="dl" id="firmaInfo"></dl>
+  <p class="note">Al confirmar, la acción se registra con su firma digital y queda vinculada a su usuario. No podrá negarse ni modificarse sin que la verificación lo detecte.</p>
+  <div class="row"><button class="btn pri" id="firmaOk">Firmar y confirmar</button><button class="btn" id="firmaNo">Cancelar</button></div>
+</div></div>
 <div id="toast" class="toast" hidden></div>
 
-<script src="js/catalogos.js"></script>
-<script src="js/app.js"></script>
+<script src="js/catalogos.js?v=4"></script>
+<script src="js/app.js?v=4"></script>
 </body>
 </html>
