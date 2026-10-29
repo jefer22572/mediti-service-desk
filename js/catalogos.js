@@ -31,6 +31,88 @@ const PLANTILLAS = [
   { t: 'Lector de código de barras de Laboratorio no responde', c: 'Puesto de trabajo', ci: 'LECT-LAB-02', i: 3, u: 1, sol: 'Cable USB dañado. Reemplazo por soporte de campo.' },
 ];
 
+
+// ===== Catálogo de incidentes para el registro por clics =====
+// i = impacto sugerido, u = urgencia sugerida, cl = regla clínica (P1)
+const CATALOGO = {
+  'Aplicaciones clínicas': {
+    ci: ['APP-HIS (Historia clínica)', 'APP-HIS-FARMACIA', 'APP-HIS-ADMISION', 'APP-RECETAS', 'APP-LABORATORIO (LIS)', 'APP-CITAS'],
+    inc: [
+      { t: 'HIS no carga historias clínicas', i: 1, u: 1, cl: true, d: 'El sistema de historia clínica no abre ni permite consultar pacientes.' },
+      { t: 'HIS no permite registrar atenciones', i: 1, u: 1, cl: true, d: 'Al guardar la atención el sistema muestra error y no registra.' },
+      { t: 'Lentitud en módulo de Farmacia del HIS', i: 2, u: 1, d: 'El módulo de Farmacia tarda más de un minuto en responder.' },
+      { t: 'Error al guardar receta en sistema interno', i: 2, u: 1, d: 'El sistema de recetas muestra error al guardar la prescripción.' },
+      { t: 'Sistema de laboratorio no envía resultados', i: 2, u: 1, d: 'Los resultados de laboratorio no llegan a la historia clínica.' },
+      { t: 'Error al programar citas', i: 3, u: 2, d: 'El módulo de citas no muestra horarios disponibles.' },
+    ]
+  },
+  'Base de datos': {
+    ci: ['SRV-ORA-PRD01 / HISPRD', 'SRV-ORA-PRD02 / LISPRD', 'SRV-ORA-STB01 (réplica Data Guard)'],
+    inc: [
+      { t: 'Base de datos Oracle no acepta conexiones', i: 1, u: 1, cl: true, d: 'Las aplicaciones muestran error de conexión a la base de datos.' },
+      { t: 'Error ORA-00257 (archivado detenido)', i: 1, u: 1, cl: true, d: 'La base de datos se detuvo por falta de espacio en el área de archivado.' },
+      { t: 'Bloqueos en tablas del HIS', i: 2, u: 1, d: 'Sesiones bloqueadas que ralentizan el sistema.' },
+      { t: 'Tablespace cerca del límite', i: 1, u: 2, d: 'El monitoreo indica que el tablespace supera el 90 %.' },
+      { t: 'Falla del respaldo RMAN nocturno', i: 2, u: 2, d: 'El job de respaldo nocturno terminó con error.' },
+    ]
+  },
+  'Red y comunicaciones': {
+    ci: ['ENL-WAN-SEDE (enlace principal)', 'ENL-4G-RESPALDO', 'SW-CORE-01', 'AP-WIFI-HOSPITALIZACION', 'FW-PERIMETRAL'],
+    inc: [
+      { t: 'Sede sin enlace de datos', i: 1, u: 1, cl: true, d: 'La sede perdió conexión con los sistemas centrales.' },
+      { t: 'Lentitud general de la red', i: 2, u: 2, d: 'Todos los sistemas responden lento en la sede.' },
+      { t: 'Wi-Fi intermitente', i: 2, u: 2, d: 'La red inalámbrica se desconecta constantemente.' },
+      { t: 'Switch de piso sin servicio', i: 2, u: 1, d: 'Un piso completo quedó sin red cableada.' },
+      { t: 'Sin acceso a internet', i: 2, u: 2, d: 'Los equipos tienen red interna pero no internet.' },
+    ]
+  },
+  'Infraestructura': {
+    ci: ['SRV-APP-01 (Dell R750)', 'SRV-APP-02 (HP DL380)', 'SRV-PACS-01 (Dell R740)', 'CLUSTER-VMWARE', 'STORAGE-SAN-01', 'UPS-DATACENTER'],
+    inc: [
+      { t: 'Servidor de aplicaciones caído', i: 1, u: 1, cl: true, d: 'El servidor no responde y las aplicaciones están fuera de servicio.' },
+      { t: 'Disco degradado en servidor', i: 1, u: 2, d: 'El RAID reporta un disco con falla.' },
+      { t: 'CPU o memoria al límite', i: 2, u: 2, d: 'El monitoreo reporta uso de CPU o memoria mayor al 95 %.' },
+      { t: 'Fuente de poder con falla', i: 2, u: 2, d: 'Una de las fuentes redundantes del servidor está en falla.' },
+      { t: 'Almacenamiento casi lleno', i: 2, u: 2, d: 'El almacenamiento supera el 90 % de ocupación.' },
+    ]
+  },
+  'Colaboración (M365)': {
+    ci: ['M365-EXCHANGE (correo)', 'M365-TEAMS', 'M365-SHAREPOINT', 'M365-ONEDRIVE'],
+    inc: [
+      { t: 'Correo caído en la sede', i: 2, u: 1, d: 'Ningún usuario de la sede puede enviar ni recibir correos.' },
+      { t: 'Teams no conecta en teleconsulta', i: 2, u: 1, d: 'Las teleconsultas no pueden iniciarse por Teams.' },
+      { t: 'Outlook no sincroniza', i: 3, u: 2, d: 'El correo no se actualiza en Outlook.' },
+      { t: 'Sin acceso a SharePoint', i: 2, u: 3, d: 'El usuario no puede abrir un sitio de SharePoint.' },
+      { t: 'OneDrive no sincroniza archivos', i: 3, u: 3, d: 'Los archivos no se sincronizan con la nube.' },
+    ]
+  },
+  'Puesto de trabajo': {
+    ci: ['PC-CONSULTORIO', 'PC-ADMISION', 'IMP-ZEBRA-PULSERAS', 'IMP-LASER-ADM', 'LECTOR-CODIGO-BARRAS', 'MONITOR'],
+    inc: [
+      { t: 'Computadora no enciende', i: 3, u: 1, d: 'El equipo no enciende o se reinicia solo.' },
+      { t: 'Impresora de pulseras no imprime', i: 2, u: 1, d: 'No se pueden imprimir pulseras de identificación de pacientes.' },
+      { t: 'Impresora no imprime', i: 3, u: 2, d: 'Los documentos quedan en cola y no se imprimen.' },
+      { t: 'Lector de código de barras no responde', i: 3, u: 1, d: 'El lector no registra los códigos.' },
+      { t: 'Solicitud de instalación de software', i: 3, u: 3, d: 'Se requiere instalar un programa del catálogo aprobado.' },
+    ]
+  },
+  'Seguridad': {
+    ci: ['AD-USUARIOS', 'M365-EXCHANGE (correo)', 'EDR-ANTIVIRUS', 'FW-PERIMETRAL', 'VPN-ACCESO-REMOTO'],
+    inc: [
+      { t: 'Sospecha de ransomware', i: 1, u: 1, cl: true, d: 'Archivos cifrados o mensaje de rescate en pantalla.' },
+      { t: 'Cuenta de usuario bloqueada', i: 3, u: 1, d: 'El usuario no puede ingresar por bloqueo de cuenta.' },
+      { t: 'Correo sospechoso de phishing', i: 2, u: 2, d: 'Se recibió un correo sospechoso que solicita credenciales.' },
+      { t: 'Alerta de malware del antivirus', i: 2, u: 1, d: 'El antivirus detectó una amenaza en el equipo.' },
+      { t: 'Restablecer contraseña', i: 3, u: 2, d: 'El usuario olvidó su contraseña.' },
+      { t: 'VPN no conecta', i: 3, u: 2, d: 'El acceso remoto por VPN falla al conectar.' },
+    ]
+  },
+};
+const SINTOMAS = ['Afecta a un solo usuario', 'Afecta a todo el área', 'Afecta a toda la sede', 'Afecta a varias sedes', 'Ocurre de forma intermitente', 'Muestra un mensaje de error'];
+const DESDE = ['Hace menos de 15 minutos', 'Hace aproximadamente 1 hora', 'Desde el inicio del turno', 'Desde ayer'];
+const SOLUCIONES = ['Reinicio del servicio o aplicación', 'Reinicio del equipo del usuario', 'Restablecimiento de credenciales', 'Reconfiguración del equipo o perfil', 'Reemplazo de hardware', 'Conmutación a enlace o servidor de respaldo', 'Liberación de espacio y depuración', 'Reversa (rollback) de cambio reciente', 'Aplicación de artículo de la base de conocimiento', 'Solución aplicada por el proveedor'];
+const NOTAS = ['Se contactó al usuario para validar la falla', 'Se aplicó el artículo de la base de conocimiento', 'Se coordinó por puente de crisis con N2 y N3', 'En espera de respuesta del proveedor', 'Se activó la contingencia clínica en la sede', 'Se informó el avance a la dirección médica', 'Se programó visita de soporte de campo', 'El usuario confirma que la falla persiste'];
+
 function mulberry(a) { return function () { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
 
 function genDemo(now) {

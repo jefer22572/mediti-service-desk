@@ -159,9 +159,9 @@ function renderDetalle(id) {
   if (ab && t.prioridad === 'P1' && !t.mayor) act += `<button class="btn dng" data-a="mayor">Declarar incidente mayor</button>`;
   if (ab && t.estado !== 'Nuevo' && t.nivel === 'N1') act += `<span class="row" style="gap:6px"><select id="selN2" style="width:auto">${GRUPOS_N2.map(g => `<option ${g === GRUPO_POR_CAT[t.categoria] ? 'selected' : ''}>${g}</option>`).join('')}</select><button class="btn" data-a="n2">Escalar a N2</button></span>`;
   if (ab && t.nivel === 'N2') act += `<span class="row" style="gap:6px"><select id="selN3" style="width:auto">${PROVEEDORES.map(g => `<option>${g}</option>`).join('')}</select><button class="btn" data-a="n3">Escalar a N3</button></span>`;
-  if (ab && t.estado !== 'Nuevo') act += `<div style="flex-basis:100%;display:flex;gap:8px;flex-wrap:wrap"><input id="txtSol" placeholder="Solución aplicada" style="flex:1;min-width:200px"><button class="btn pri" data-a="resolver">Resolver</button></div>`;
+  if (ab && t.estado !== 'Nuevo') act += `<div style="flex-basis:100%;display:flex;gap:8px;flex-wrap:wrap"><select id="txtSol" style="flex:1;min-width:200px">${solOpts(t)}</select><button class="btn pri" data-a="resolver">Resolver</button></div>`;
   if (t.estado === 'Resuelto') act += `<span class="row" style="gap:6px">Encuesta del usuario <select id="selCsat" style="width:auto"><option value="5">5 – Muy satisfecho</option><option value="4">4</option><option value="3">3</option><option value="2">2</option><option value="1">1 – Insatisfecho</option></select><button class="btn pri" data-a="cerrar">Confirmar y cerrar</button></span><button class="btn" data-a="reabrir">Reabrir</button>`;
-  if (ab) act += `<div style="flex-basis:100%;display:flex;gap:8px;flex-wrap:wrap"><input id="txtNota" placeholder="Agregar nota de seguimiento" style="flex:1;min-width:200px"><button class="btn" data-a="nota">Agregar nota</button></div>`;
+  if (ab) act += `<div style="flex-basis:100%;display:flex;gap:8px;flex-wrap:wrap"><select id="txtNota" style="flex:1;min-width:200px">${NOTAS.map(n => `<option>${esc(n)}</option>`).join('')}</select><button class="btn" data-a="nota">Agregar nota</button></div>`;
   $('#pane').innerHTML = `
     <div class="row" style="justify-content:space-between"><span class="mono">${t.id}${t.demo ? ' · ejemplo' : ''}</span><button class="btn" id="btnX">Cerrar panel</button></div>
     <h2 style="margin-top:8px">${esc(t.titulo)}</h2>
@@ -183,6 +183,11 @@ function renderDetalle(id) {
   $('#pane').querySelectorAll('[data-a]').forEach(b => b.onclick = () => accion(t.id, b.dataset.a));
 }
 
+function solOpts(t) {
+  const pl = PLANTILLAS.find(p => p.t === t.titulo || t.titulo.startsWith(p.t));
+  const L = (pl ? [pl.sol] : []).concat(SOLUCIONES);
+  return L.map(s => `<option>${esc(s)}</option>`).join('');
+}
 async function accion(id, a) {
   const t0 = TICKETS.find(x => x.id === id); if (!t0) return;
   const t = JSON.parse(JSON.stringify(t0)); const now = ahora();
@@ -193,7 +198,7 @@ async function accion(id, a) {
   if (a === 'mayor') { t.mayor = true; log('N1', 'Gestor de Incidentes Mayores', 'Incidente Mayor declarado. Notificación a N2 ' + (fueraDeHorario() ? 'on-call' : '') + ', Jefe TI VidaSalud y dirección médica. Puente de crisis abierto.'); }
   if (a === 'n2') { const g = $('#selN2').value; t.nivel = 'N2'; t.grupo = g; t.estado = 'Escalado'; t.fcr = false; log('N2', 'Analista N1', 'Escalado a ' + (fueraDeHorario() ? 'guardia on-call de ' : '') + g + '.'); }
   if (a === 'n3') { const p = $('#selN3').value; t.nivel = 'N3'; t.proveedor = p; t.estado = 'Escalado'; log('N3', t.grupo || 'TI VidaSalud', 'Escalado al proveedor ' + p + ' según contrato de soporte.'); }
-  if (a === 'resolver') { const s = $('#txtSol').value.trim(); if (!s) { toast('Escriba la solución aplicada antes de resolver.'); return; } t.solucion = s; t.estado = 'Resuelto'; t.resuelto = now; if (t.nivel === 'N1' && t.reabierto === 0) t.fcr = !t.log.some(l => l.nivel !== 'N1'); log(t.nivel, t.nivel === 'N3' ? t.proveedor : t.nivel === 'N2' ? t.grupo : 'Analista N1', 'Resuelto: ' + s); }
+  if (a === 'resolver') { const s = $('#txtSol').value.trim(); if (!s) { toast('Elija la solución aplicada.'); return; } t.solucion = s; t.estado = 'Resuelto'; t.resuelto = now; if (t.nivel === 'N1' && t.reabierto === 0) t.fcr = !t.log.some(l => l.nivel !== 'N1'); log(t.nivel, t.nivel === 'N3' ? t.proveedor : t.nivel === 'N2' ? t.grupo : 'Analista N1', 'Resuelto: ' + s); }
   if (a === 'cerrar') { t.csat = +$('#selCsat').value; t.estado = 'Cerrado'; t.cerrado = now; log('N1', 'Service Desk MediTI', 'Usuario confirmó la solución. Encuesta: ' + t.csat + '/5. Ticket cerrado.'); }
   if (a === 'reabrir') { t.estado = 'En curso'; t.resuelto = null; t.reabierto = (t.reabierto || 0) + 1; t.fcr = false; log(t.nivel, 'Service Desk MediTI', 'El usuario indica que la falla persiste. Ticket reabierto.'); }
   if (a === 'nota') { const s = $('#txtNota').value.trim(); if (!s) return; log(t.nivel, 'Analista', s); }
@@ -216,7 +221,11 @@ async function cargarDemo() {
   toast('Datos de demostración cargados');
 }
 
-// ===== Formulario =====
+// ===== Formulario por clics =====
+function llenarIncidentes() { const c = CATALOGO[$('#nCat').value]; $('#nTit').innerHTML = c.inc.map((x, i) => `<option value="${i}">${esc(x.t)}</option>`).join(''); opts('#nCi', c.ci); }
+function incSel() { return CATALOGO[$('#nCat').value].inc[+$('#nTit').value]; }
+function aplicarIncidente() { const x = incSel(); $('#nImp').value = x.i; $('#nUrg').value = x.u; $('#nCli').checked = !!x.cl; prioPreview(); descGen(); }
+function descGen() { const x = incSel(); $('#nDesc').textContent = x.d + ' ' + $('#nSin').value + '. Ocurre: ' + $('#nDes').value.toLowerCase() + '. Área: ' + $('#nArea').value + '.'; }
 function opts(sel, arr) { $(sel).innerHTML = arr.map(x => `<option>${esc(x)}</option>`).join(''); }
 function prioPreview() {
   const p = prioridadDe(+$('#nImp').value, +$('#nUrg').value, $('#nCli').checked); const S = PRIO[p];
@@ -225,7 +234,9 @@ function prioPreview() {
 
 // ===== Inicio =====
 function initUI() {
-  opts('#nSede', SEDES); opts('#nArea', AREAS); opts('#nCanal', CANALES); opts('#nCat', CATEGORIAS);
+  opts('#nSede', SEDES); opts('#nArea', AREAS); opts('#nCanal', CANALES.filter(c => !c.startsWith('Monitoreo'))); opts('#nCat', CATEGORIAS); opts('#nSol', ROLES); opts('#nSin', SINTOMAS); opts('#nDes', DESDE);
+  $('#nCat').addEventListener('change', () => { llenarIncidentes(); aplicarIncidente(); }); $('#nTit').addEventListener('change', aplicarIncidente);
+  ['#nSin', '#nDes', '#nArea'].forEach(s => $(s).addEventListener('change', descGen)); llenarIncidentes(); aplicarIncidente();
   $('#fs').innerHTML = '<option value="">Todas las sedes</option>' + SEDES.map(s => `<option>${esc(s)}</option>`).join('');
   $('#lstN2').innerHTML = GRUPOS_N2.map(g => `<li>${g}</li>`).join(''); $('#lstN3').innerHTML = PROVEEDORES.map(g => `<li>${g}</li>`).join('');
   document.querySelectorAll('nav.tabs button').forEach(b => b.onclick = () => ver(b.dataset.v));
@@ -238,9 +249,9 @@ function initUI() {
   document.addEventListener('keydown', e => { if (e.key === 'Escape' && OPEN) cerrarPanel(); });
   $('#fNuevo').onsubmit = async e => {
     e.preventDefault();
-    const d = { solicitante: $('#nSol').value.trim(), sede: $('#nSede').value, area: $('#nArea').value, canal: $('#nCanal').value, categoria: $('#nCat').value, ci: $('#nCi').value.trim(), titulo: $('#nTit').value.trim(), descripcion: $('#nDesc').value.trim(), impacto: +$('#nImp').value, urgencia: +$('#nUrg').value, clinico: $('#nCli').checked };
-    if (!d.solicitante || !d.titulo) { $('#nMsg').textContent = 'Complete el solicitante y el título.'; return; }
-    const t = await crear(d); if (t) { $('#nMsg').textContent = ''; e.target.reset(); prioPreview(); toast('Ticket ' + t.id + ' registrado con prioridad ' + t.prioridad); ver('tickets'); abrir(t.id); }
+    const d = { solicitante: $('#nSol').value, sede: $('#nSede').value, area: $('#nArea').value, canal: $('#nCanal').value, categoria: $('#nCat').value, ci: $('#nCi').value, titulo: incSel().t, descripcion: $('#nDesc').textContent, impacto: +$('#nImp').value, urgencia: +$('#nUrg').value, clinico: $('#nCli').checked };
+    
+    const t = await crear(d); if (t) { $('#nMsg').textContent = ''; e.target.reset(); llenarIncidentes(); aplicarIncidente(); toast('Ticket ' + t.id + ' registrado con prioridad ' + t.prioridad); ver('tickets'); abrir(t.id); }
   };
   $('#btnZabbix').onclick = async () => {
     const alertas = [

@@ -79,16 +79,18 @@
   </section>
 
   <section id="v-nuevo" hidden>
-    <h2>Registrar incidente</h2><p class="sub">La prioridad se calcula con la matriz impacto × urgencia. Todo incidente que detenga la atención de pacientes es P1.</p>
+    <h2>Registrar incidente</h2><p class="sub">Todo se completa con clics: elija la categoría y el incidente, y el sistema sugiere el impacto, la urgencia y la prioridad. Todo incidente que detenga la atención de pacientes es P1.</p>
     <form id="fNuevo" class="card form" novalidate>
-      <label class="f">Solicitante<input id="nSol" required placeholder="Ej.: Médico de guardia"></label>
+      <label class="f">Solicitante<select id="nSol"></select></label>
       <label class="f">Sede<select id="nSede"></select></label>
       <label class="f">Área<select id="nArea"></select></label>
       <label class="f">Canal<select id="nCanal"></select></label>
       <label class="f">Categoría<select id="nCat"></select></label>
-      <label class="f">CI afectado<input id="nCi" placeholder="Ej.: SRV-ORA-PRD01"></label>
-      <label class="f span3">Título<input id="nTit" required placeholder="Resumen breve del problema"></label>
-      <label class="f span3">Descripción<textarea id="nDesc" rows="3" placeholder="Síntomas, mensaje de error, desde cuándo ocurre"></textarea></label>
+      <label class="f">CI afectado<select id="nCi"></select></label>
+      <label class="f span3">Incidente<select id="nTit"></select></label>
+      <label class="f">Alcance<select id="nSin"></select></label>
+      <label class="f">Desde cuándo<select id="nDes"></select></label>
+      <div style="display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--muted);min-width:0"><b>Descripción generada</b><span id="nDesc" style="color:var(--fg);font-weight:400"></span></div>
       <label class="f">Impacto<select id="nImp"><option value="1">Alto – sede completa o servicio crítico</option><option value="2" selected>Medio – un área o grupo</option><option value="3">Bajo – un usuario</option></select></label>
       <label class="f">Urgencia<select id="nUrg"><option value="1">Alta – atención detenida</option><option value="2" selected>Media – proceso degradado</option><option value="3">Baja – puede esperar</option></select></label>
       <div class="chk span3"><input type="checkbox" id="nCli"><label for="nCli">Afecta la atención de pacientes en Emergencia, UCI, Sala de Operaciones o Farmacia (regla clínica → P1)</label></div>
