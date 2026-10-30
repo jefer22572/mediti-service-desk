@@ -160,6 +160,7 @@ function renderDetalle(id) {
   if (ab && t.estado !== 'Nuevo' && t.nivel === 'N1') act += `<span class="row" style="gap:6px"><select id="selN2" style="width:auto">${GRUPOS_N2.map(g => `<option ${g === GRUPO_POR_CAT[t.categoria] ? 'selected' : ''}>${g}</option>`).join('')}</select><button class="btn" data-a="n2">Escalar a N2</button></span>`;
   if (ab && t.nivel === 'N2') act += `<span class="row" style="gap:6px"><select id="selN3" style="width:auto">${PROVEEDORES.map(g => `<option>${g}</option>`).join('')}</select><button class="btn" data-a="n3">Escalar a N3</button></span>`;
   if (ab && t.estado !== 'Nuevo') act += `<div style="flex-basis:100%;display:flex;gap:8px;flex-wrap:wrap"><select id="txtSol" style="flex:1;min-width:200px">${solOpts(t)}</select><button class="btn pri" data-a="resolver">Resolver</button></div>`;
+  if (t.estado === 'Cerrado') act += `<div style="flex-basis:100%;display:flex;gap:10px;align-items:center;flex-wrap:wrap"><span class="est Resuelto">Proceso de cierre completado</span><button class="btn pri" data-a="informe">Descargar informe de cierre (PDF)</button></div><p class="note" style="margin:0;flex-basis:100%">El informe incluye datos del incidente, cumplimiento de SLA, escalamiento, solución, satisfacción, cronología y verificación de firmas.</p>`;
   if (t.estado === 'Resuelto') act += `<span class="row" style="gap:6px">Encuesta del usuario <select id="selCsat" style="width:auto"><option value="5">5 – Muy satisfecho</option><option value="4">4</option><option value="3">3</option><option value="2">2</option><option value="1">1 – Insatisfecho</option></select><button class="btn pri" data-a="cerrar">Confirmar y cerrar</button></span><button class="btn" data-a="reabrir">Reabrir</button>`;
   if (ab) act += `<div style="flex-basis:100%;display:flex;gap:8px;flex-wrap:wrap"><select id="txtNota" style="flex:1;min-width:200px">${NOTAS.map(n => `<option>${esc(n)}</option>`).join('')}</select><button class="btn" data-a="nota">Agregar nota</button></div>`;
   $('#pane').innerHTML = `
@@ -186,11 +187,13 @@ function renderDetalle(id) {
 
 function solOpts(t) {
   const pl = PLANTILLAS.find(p => p.t === t.titulo || t.titulo.startsWith(p.t));
-  const L = (pl ? [pl.sol] : []).concat(SOLUCIONES);
+  const ci = Object.values(CATALOGO).flatMap(c => c.inc).find(x => x.t === t.titulo && x.s);
+  const L = (ci ? [ci.s] : []).concat(pl ? [pl.sol] : []).concat(SOLUCIONES);
   return L.map(s => `<option>${esc(s)}</option>`).join('');
 }
 async function accion(id, a) {
   const t0 = TICKETS.find(x => x.id === id); if (!t0) return;
+  if (a === 'informe') { await descargarInforme(t0); return; }
   const t = JSON.parse(JSON.stringify(t0)); const now = ahora();
   if (FIRMAR_ACC.includes(a) && !(await confirmarFirma(t, ETIQ_ACC[a]))) return;
   const log = (nivel, autor, texto) => t.log.push({ t: now, nivel, autor, usuario: SESSION ? SESSION.user : '', rol: SESSION ? SESSION.rol : '', accion: a, texto, pend: true });
@@ -290,7 +293,7 @@ const b64 = buf => { const u = new Uint8Array(buf); let s = ''; for (let i = 0; 
 const unb64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
 const CRYPTO_OK = !!(window.crypto && crypto.subtle && window.isSecureContext !== false);
 const FIRMAR_ACC = ['mayor', 'n2', 'n3', 'resolver', 'cerrar', 'reabrir'];
-const ETIQ_ACC = { registrar: 'Registrar ticket', alerta_monitoreo: 'Alerta de monitoreo', tomar: 'Asignar ticket', curso: 'Marcar en curso', espera: 'Poner en espera', mayor: 'Declarar incidente mayor', n2: 'Escalar a Nivel 2', n3: 'Escalar a Nivel 3', resolver: 'Resolver ticket', cerrar: 'Cerrar ticket', reabrir: 'Reabrir ticket', nota: 'Agregar nota', demo: 'Dato de demostración' };
+const ETIQ_ACC = { registrar: 'Registrar ticket', alerta_monitoreo: 'Alerta de monitoreo', tomar: 'Asignar ticket', curso: 'Marcar en curso', espera: 'Poner en espera', mayor: 'Declarar incidente mayor', n2: 'Escalar a Nivel 2', n3: 'Escalar a Nivel 3', resolver: 'Resolver ticket', cerrar: 'Cerrar ticket', reabrir: 'Reabrir ticket', nota: 'Agregar nota', informe: 'Informe de cierre', demo: 'Dato de demostración' };
 
 async function derivarClave(pw, salt) {
   const base = await crypto.subtle.importKey('raw', te.encode(pw), 'PBKDF2', false, ['deriveKey']);
@@ -436,6 +439,158 @@ async function simularAlteracion() {
   ALTER = { id: t.id, idx: best.i, texto: t.log[best.i].texto };
   t.log[best.i].texto += ' [texto modificado sin autorización]';
   await guardar(t); toast('Se modificó un registro de ' + t.id + ' sin firmarlo. Revise la verificación.'); renderAuditoria();
+}
+
+
+// ===== Proceso de cierre: informe PDF de la falla =====
+const PDFTXT = s => String(s ?? '').replace(/→/g, '->').replace(/≤/g, '<=').replace(/≥/g, '>=').replace(/[✓✔]/g, '').replace(/[✗✘]/g, 'X').replace(/…/g, '...').replace(/[«»]/g, '"').replace(/[^\x00-\xFF–—‘’“”•€]/g, '');
+const fmtFull = ms => ms ? new Date(ms).toLocaleString('es-PE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false }) : '—';
+function datosInforme(t) {
+  const S = PRIO[t.prioridad];
+  const resp = t.asignado ? (t.asignado - t.creado) / MIN : null;
+  const res = t.resuelto ? (t.resuelto - t.creado) / MIN : null;
+  return { S, resp, res, okResp: resp != null && resp <= S.resp, okRes: res != null && res <= S.res };
+}
+async function generarPDF(t, ver) {
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+  const W = 210, M = 15, CW = W - 2 * M; let y = 0;
+  const TEAL = [14, 107, 102], GRIS = [90, 107, 105], CLARO = [232, 242, 241];
+  const nuevaPag = () => { doc.addPage(); y = 18; };
+  const asegurar = h => { if (y + h > 280) nuevaPag(); };
+  const sec = titulo => { asegurar(14); y += 3; doc.setFillColor(...TEAL); doc.rect(M, y, 2, 6, 'F'); doc.setFont('helvetica', 'bold'); doc.setFontSize(11.5); doc.setTextColor(...TEAL); doc.text(PDFTXT(titulo), M + 4, y + 4.6); y += 9; doc.setTextColor(20, 33, 31); };
+  const tabla = (headers, rows, widths, opt = {}) => {
+    const tot = widths.reduce((a, b) => a + b, 0); const ws = widths.map(w => w * CW / tot);
+    const fila = (cells, head, fill) => {
+      doc.setFont('helvetica', head ? 'bold' : 'normal'); doc.setFontSize(head ? 8.5 : 8.5);
+      const lines = cells.map((c, i) => doc.splitTextToSize(PDFTXT(c), ws[i] - 3));
+      const h = Math.max(...lines.map(l => l.length)) * 3.8 + 2.6;
+      asegurar(h);
+      let x = M;
+      cells.forEach((c, i) => {
+        const f = head ? TEAL : (opt.colors && opt.colors(cells, i)) || fill;
+        if (f) { doc.setFillColor(...f); doc.rect(x, y, ws[i], h, 'F'); }
+        doc.setDrawColor(190, 205, 203); doc.rect(x, y, ws[i], h);
+        doc.setTextColor(...(head ? [255, 255, 255] : [20, 33, 31]));
+        if (!head && opt.boldFirst && i === 0) doc.setFont('helvetica', 'bold'); else doc.setFont('helvetica', head ? 'bold' : 'normal');
+        doc.text(lines[i], x + 1.5, y + 4.4);
+        x += ws[i];
+      });
+      y += h;
+    };
+    if (headers) fila(headers, true);
+    rows.forEach((r, i) => fila(r, false, opt.zebra && i % 2 ? [247, 250, 250] : (opt.boldFirst ? null : null)));
+    y += 3;
+  };
+  // Encabezado
+  doc.setFillColor(...TEAL); doc.rect(0, 0, W, 30, 'F');
+  doc.setTextColor(255, 255, 255); doc.setFont('helvetica', 'bold'); doc.setFontSize(17); doc.text('MediTI Service Desk', M, 12);
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.text('Grupo Hospitalario VidaSalud · Informe de cierre de incidente', M, 19);
+  doc.setFontSize(9); doc.text(PDFTXT('Generado: ' + fmtFull(Date.now()) + ' por ' + (SESSION ? SESSION.user + ' (' + SESSION.rol + ')' : '')), M, 25);
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(13); doc.text(t.id, W - M, 12, { align: 'right' });
+  doc.setFontSize(9); doc.setFont('helvetica', 'normal'); doc.text(PDFTXT(t.prioridad + ' – ' + PRIO[t.prioridad].label + ' · ' + t.estado), W - M, 19, { align: 'right' });
+  y = 38;
+  doc.setTextColor(20, 33, 31); doc.setFont('helvetica', 'bold'); doc.setFontSize(14);
+  const tl = doc.splitTextToSize(PDFTXT(t.titulo), CW); doc.text(tl, M, y); y += tl.length * 6 + 2;
+  const d = datosInforme(t);
+  // Resumen
+  const box = (x, w, label, val, ok) => { doc.setFillColor(...(ok === false ? [251, 227, 225] : ok ? [221, 241, 229] : CLARO)); doc.roundedRect(x, y, w, 16, 2, 2, 'F'); doc.setFontSize(7.5); doc.setFont('helvetica', 'normal'); doc.setTextColor(...GRIS); doc.text(PDFTXT(label), x + 3, y + 5); doc.setFontSize(11); doc.setFont('helvetica', 'bold'); doc.setTextColor(20, 33, 31); doc.text(PDFTXT(val), x + 3, y + 12); };
+  const bw = (CW - 9) / 4;
+  box(M, bw, 'Tiempo de respuesta', fmtDur(d.resp), d.okResp);
+  box(M + bw + 3, bw, 'Tiempo de resolución', fmtDur(d.res), d.okRes);
+  box(M + 2 * (bw + 3), bw, 'Nivel que resolvió', t.nivel + (t.nivel === 'N3' ? ' · proveedor' : t.nivel === 'N2' ? ' · TI VidaSalud' : ' · Service Desk'));
+  box(M + 3 * (bw + 3), bw, 'Satisfacción (CSAT)', t.csat ? t.csat + ' / 5' : '—', t.csat ? t.csat >= 4 : undefined);
+  y += 22;
+
+  sec('1. Datos del incidente');
+  tabla(null, [
+    ['Solicitante', t.solicitante], ['Sede / área', t.sede + ' · ' + t.area], ['Canal', t.canal],
+    ['Categoría', t.categoria], ['CI afectado', t.ci || '—'],
+    ['Impacto / urgencia', t.impacto + ' / ' + t.urgencia + (t.clinico ? ' · regla clínica (afecta atención de pacientes)' : '')],
+    ['Prioridad', t.prioridad + ' – ' + PRIO[t.prioridad].label + ' (SLA: respuesta ' + fmtDur(d.S.resp) + ', resolución ' + fmtDur(d.S.res) + ')'],
+    ['Descripción', t.descripcion || '—']], [28, 72], { boldFirst: true });
+
+  sec('2. Tiempos y cumplimiento de SLA');
+  const est = ok => ok ? 'Cumple' : 'No cumple';
+  tabla(['Indicador', 'Meta', 'Resultado', 'Estado'], [
+    ['Tiempo de respuesta (registro -> asignación)', fmtDur(d.S.resp), fmtDur(d.resp), est(d.okResp)],
+    ['Tiempo de resolución (registro -> resolución)', fmtDur(d.S.res), fmtDur(d.res), est(d.okRes)],
+    ['Confirmación del usuario', 'Encuesta >= 4', t.csat ? t.csat + ' / 5' : '—', t.csat >= 4 ? 'Cumple' : 'Revisar']],
+    [46, 18, 18, 18], { colors: (r, i) => i === 3 ? (r[3] === 'Cumple' ? [221, 241, 229] : [251, 227, 225]) : null });
+  tabla(['Registro', 'Asignación', 'Resolución', 'Cierre'], [[fmtFull(t.creado), fmtFull(t.asignado), fmtFull(t.resuelto), fmtFull(t.cerrado)]], [25, 25, 25, 25]);
+
+  sec('3. Atención y escalamiento');
+  tabla(null, [
+    ['Nivel de resolución', t.nivel],
+    ['Grupo N2', t.grupo || 'No se escaló a N2'],
+    ['Proveedor N3', t.proveedor || 'No se escaló a N3'],
+    ['Incidente mayor', t.mayor ? 'Sí – se activó el protocolo de incidente mayor' : 'No'],
+    ['Resuelto en primer contacto', t.fcr ? 'Sí' : 'No'],
+    ['Reaperturas', String(t.reabierto || 0)]], [28, 72], { boldFirst: true });
+
+  sec('4. Solución aplicada');
+  tabla(null, [['Solución', t.solucion || '—'], ['Satisfacción del usuario', t.csat ? t.csat + ' / 5' : '—']], [28, 72], { boldFirst: true });
+
+  sec('5. Cronología de la atención');
+  const firma = s => ({ ok: 'Válida', sin_firma: 'Sin firma', alterado: 'ALTERADO', cadena: 'CADENA ROTA', firma: 'INVÁLIDA' }[s] || '—');
+  const L = t.log.map((e, i) => ({ e, s: ver ? ver.entries[i] : '' })).sort((a, b) => a.e.t - b.e.t);
+  tabla(['Fecha y hora', 'Nivel', 'Usuario', 'Acción realizada', 'Firma'],
+    L.map(({ e, s }) => [fmtFull(e.t), e.nivel, (e.usuario || e.autor) + (e.rol ? '\n' + e.rol : ''), e.texto, firma(s)]),
+    [19, 7, 20, 42, 12], { zebra: true, colors: (r, i) => i === 4 ? (r[4] === 'Válida' ? [221, 241, 229] : r[4] === 'Sin firma' ? [240, 240, 240] : [251, 227, 225]) : null });
+
+  sec('6. Integridad y no repudio');
+  const ok = ver ? ver.entries.filter(s => s === 'ok').length : 0;
+  const bad = ver ? ver.entries.filter(s => ['alterado', 'cadena', 'firma'].includes(s)).length : 0;
+  const ultimo = [...t.log].reverse().find(e => e.hash);
+  const claves = [...new Set(t.log.filter(e => e.kid).map(e => (e.usuario || '') + ' (' + e.kid + ')'))].join(', ');
+  const integro = bad === 0 && (!ver || ver.estado !== 'modificado');
+  tabla(null, [
+    ['Eventos registrados', String(t.log.length)],
+    ['Firmas válidas', ok + ' de ' + t.log.length + ' (ECDSA P-256 / SHA-256)'],
+    ['Resultado', integro ? 'Bitácora íntegra: ningún registro fue alterado.' : 'ATENCIÓN: se detectaron registros alterados o datos modificados fuera del sistema.'],
+    ['Claves de firma', claves || '—'],
+    ['Código de verificación', ultimo ? ultimo.hash : 'Sin eventos firmados']], [28, 72], { boldFirst: true, colors: (r, i) => i === 1 && r[0] === 'Resultado' ? (integro ? [221, 241, 229] : [251, 227, 225]) : null });
+  doc.setFontSize(8); doc.setFont('helvetica', 'italic'); doc.setTextColor(...GRIS);
+  asegurar(10);
+  doc.text(doc.splitTextToSize(PDFTXT('El código de verificación es el hash SHA-256 del último evento firmado. Cualquier cambio en la bitácora del ticket produce un código distinto, lo que garantiza el no repudio de las acciones registradas.'), CW), M, y); y += 10;
+
+  sec('7. Conformidad de cierre');
+  asegurar(30);
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(20, 33, 31);
+  const cierre = [...t.log].reverse().find(e => e.accion === 'cerrar') || t.log[t.log.length - 1];
+  doc.text(PDFTXT('Ticket cerrado el ' + fmtFull(t.cerrado) + ' por ' + (cierre && cierre.usuario ? cierre.usuario + ' – ' + cierre.rol : 'Service Desk MediTI') + ', con confirmación del usuario.'), M, y); y += 16;
+  doc.setDrawColor(120, 120, 120); doc.line(M + 5, y, M + 70, y); doc.line(W - M - 70, y, W - M - 5, y);
+  doc.setFontSize(8); doc.text('Analista del Service Desk – MediTI', M + 37.5, y + 4, { align: 'center' }); doc.text('Usuario / Jefatura TI VidaSalud', W - M - 37.5, y + 4, { align: 'center' });
+
+  const n = doc.getNumberOfPages();
+  for (let i = 1; i <= n; i++) {
+    doc.setPage(i); doc.setFontSize(7.5); doc.setFont('helvetica', 'normal'); doc.setTextColor(...GRIS);
+    doc.setDrawColor(200, 210, 208); doc.line(M, 288, W - M, 288);
+    doc.text(PDFTXT('MediTI Service Desk · ' + t.id + ' · Código ' + (ultimo ? ultimo.hash.slice(0, 16) : '—')), M, 292);
+    doc.text('Página ' + i + ' de ' + n, W - M, 292, { align: 'right' });
+  }
+  return doc;
+}
+function informeHTML(t, ver) {
+  const d = datosInforme(t);
+  const rows = t.log.slice().sort((a, b) => a.t - b.t).map(e => `<tr><td>${fmtFull(e.t)}</td><td>${e.nivel}</td><td>${esc(e.usuario || e.autor)}</td><td>${esc(e.texto)}</td></tr>`).join('');
+  return `<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Informe ${t.id}</title><style>body{font-family:Arial,sans-serif;margin:32px;color:#14211f}h1{color:#0E6B66}table{border-collapse:collapse;width:100%;margin:10px 0}td,th{border:1px solid #ccc;padding:6px;font-size:13px;text-align:left}th{background:#0E6B66;color:#fff}</style></head><body><h1>Informe de cierre – ${t.id}</h1><h2>${esc(t.titulo)}</h2><table><tr><th>Campo</th><th>Valor</th></tr><tr><td>Prioridad</td><td>${t.prioridad}</td></tr><tr><td>Sede / área</td><td>${esc(t.sede)} · ${esc(t.area)}</td></tr><tr><td>CI</td><td>${esc(t.ci)}</td></tr><tr><td>Respuesta</td><td>${fmtDur(d.resp)} (meta ${fmtDur(d.S.resp)})</td></tr><tr><td>Resolución</td><td>${fmtDur(d.res)} (meta ${fmtDur(d.S.res)})</td></tr><tr><td>Nivel</td><td>${t.nivel} ${esc(t.grupo || '')} ${esc(t.proveedor || '')}</td></tr><tr><td>Solución</td><td>${esc(t.solucion)}</td></tr><tr><td>CSAT</td><td>${t.csat || '—'}/5</td></tr></table><h3>Cronología</h3><table><tr><th>Fecha</th><th>Nivel</th><th>Usuario</th><th>Acción</th></tr>${rows}</table></body></html>`;
+}
+async function descargarInforme(t0) {
+  const ver = CRYPTO_OK ? await verificarTicket(t0) : null;
+  let blob, nombre;
+  if (window.jspdf && window.jspdf.jsPDF) { const doc = await generarPDF(t0, ver); blob = doc.output('blob'); nombre = 'Informe_cierre_' + t0.id + '.pdf'; }
+  else { blob = new Blob([informeHTML(t0, ver)], { type: 'text/html' }); nombre = 'Informe_cierre_' + t0.id + '.html'; }
+  let ok = false;
+  if (!LOCAL && window.claude && window.claude.use) {
+    try { const dl = await window.claude.use('downloads'); if (dl) { await dl.save({ filename: nombre, data: blob }); ok = true; } } catch (e) { if (e && e.code === 'declined') { toast('Descarga cancelada'); return; } }
+  }
+  if (!ok) { const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = nombre; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 4000); ok = true; }
+  // Registrar en la bitácora quién generó el informe
+  const t = JSON.parse(JSON.stringify(t0));
+  t.log.push({ t: ahora(), nivel: 'N1', autor: 'Service Desk MediTI', usuario: SESSION ? SESSION.user : '', rol: SESSION ? SESSION.rol : '', accion: 'informe', texto: 'Se generó el informe de cierre del incidente (' + nombre + ').', pend: true });
+  await sellar(t); await guardar(t);
+  toast('Informe de cierre descargado');
 }
 
 // ===== Inicio de la aplicación (solo después del login) =====

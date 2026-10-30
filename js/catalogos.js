@@ -50,7 +50,7 @@ const CATALOGO = {
     ci: ['SRV-ORA-PRD01 / HISPRD', 'SRV-ORA-PRD02 / LISPRD', 'SRV-ORA-STB01 (réplica Data Guard)'],
     inc: [
       { t: 'Base de datos Oracle no acepta conexiones', i: 1, u: 1, cl: true, d: 'Las aplicaciones muestran error de conexión a la base de datos.' },
-      { t: 'Error ORA-00257 (archivado detenido)', i: 1, u: 1, cl: true, d: 'La base de datos se detuvo por falta de espacio en el área de archivado.' },
+      { t: 'Error ORA-00257 (archivado detenido)', i: 1, u: 1, cl: true, d: 'La base de datos se detuvo por falta de espacio en el área de archivado.', s: 'Respaldo RMAN de los archivelogs, depuración y ampliación temporal del área de archivado (FRA)' },
       { t: 'Bloqueos en tablas del HIS', i: 2, u: 1, d: 'Sesiones bloqueadas que ralentizan el sistema.' },
       { t: 'Tablespace cerca del límite', i: 1, u: 2, d: 'El monitoreo indica que el tablespace supera el 90 %.' },
       { t: 'Falla del respaldo RMAN nocturno', i: 2, u: 2, d: 'El job de respaldo nocturno terminó con error.' },
@@ -59,7 +59,7 @@ const CATALOGO = {
   'Red y comunicaciones': {
     ci: ['ENL-WAN-SEDE (enlace principal)', 'ENL-4G-RESPALDO', 'SW-CORE-01', 'AP-WIFI-HOSPITALIZACION', 'FW-PERIMETRAL'],
     inc: [
-      { t: 'Sede sin enlace de datos', i: 1, u: 1, cl: true, d: 'La sede perdió conexión con los sistemas centrales.' },
+      { t: 'Sede sin enlace de datos', i: 1, u: 1, cl: true, d: 'La sede perdió conexión con los sistemas centrales.', s: 'Conmutación al enlace de respaldo 4G/LTE y reparación del tramo por el operador' },
       { t: 'Lentitud general de la red', i: 2, u: 2, d: 'Todos los sistemas responden lento en la sede.' },
       { t: 'Wi-Fi intermitente', i: 2, u: 2, d: 'La red inalámbrica se desconecta constantemente.' },
       { t: 'Switch de piso sin servicio', i: 2, u: 1, d: 'Un piso completo quedó sin red cableada.' },

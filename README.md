@@ -17,6 +17,7 @@ MediTI atiende el Nivel 1 del soporte TI 24/7 para hospitales y clínicas en Lim
 | **Detalle del ticket** | Ciclo de vida completo: asignar, en curso, en espera, escalar a **N2** (TI VidaSalud) o **N3** (proveedores), declarar **incidente mayor**, resolver, cerrar con encuesta o reabrir. Historial con fecha, hora, nivel y usuario. |
 | **Soporte 24/7** | Detecta el horario: fuera de oficina el Nivel 2 se atiende por **guardia on-call**. Avisa cuando un ticket supera el tiempo máximo en Nivel 1. |
 | **Monitoreo** | Botón que simula una alerta de **Zabbix** y crea el ticket automáticamente. |
+| **Proceso de cierre** | Al cerrar el ticket (con confirmación y encuesta del usuario) se habilita **«Descargar informe de cierre (PDF)»**: datos del incidente, cumplimiento de SLA, escalamiento, solución, satisfacción, cronología con firmas, verificación de integridad y espacio de conformidad. La generación del informe queda registrada y firmada en la bitácora. |
 | **Auditoría (no repudio)** | Cada acción se firma digitalmente (ECDSA P-256) con la clave del usuario y se encadena con un hash SHA-256. La bitácora muestra quién hizo qué y cuándo, verifica la integridad, detecta cualquier alteración y se exporta firmada en JSON. |
 | **Matriz y escalamiento** | Referencia de la matriz de prioridad, SLA y los tres niveles de soporte. |
 
@@ -100,7 +101,8 @@ mediti-service-desk/
 ├── index.html          Interfaz: login, dashboard, tickets, registro y matriz
 ├── css/styles.css      Estilos (tema claro y oscuro, adaptable a móvil)
 ├── js/catalogos.js     Matriz de prioridad, SLA, catálogos y datos de demostración
-├── js/app.js           Lógica: tickets, escalamiento, KPIs, gráficos y autenticación
+├── js/app.js           Lógica: tickets, escalamiento, KPIs, gráficos, autenticación, firma e informe de cierre
+├── js/vendor/          jsPDF 2.5.1 (generación del informe PDF)
 └── docs/img/           Capturas de pantalla
 ```
 
